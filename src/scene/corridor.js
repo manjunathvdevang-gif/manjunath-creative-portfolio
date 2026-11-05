@@ -175,29 +175,72 @@ export function createCorridor(container) {
     // 8. Interactive doors
     const interactiveDoors = [];
 
+    // Create a text label texture for each door
+
+    function createDoorLabel(text) {
+
+        const canvas = document.createElement('canvas');
+
+        canvas.width = 512;
+        canvas.height = 128;
+
+        const ctx = canvas.getContext('2d');
+
+        ctx.clearRect(0, 0, 512, 128);
+
+        ctx.fillStyle = '#f0e6d3';
+        ctx.fillRect(0, 0, 512, 128);
+
+        ctx.strokeStyle = '#514536';
+        ctx.lineWidth = 5;
+        ctx.strokeRect(8, 8, 496, 112);
+
+        ctx.fillStyle = '#393329';
+        ctx.font = 'bold 46px Georgia';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        ctx.fillText(text.toUpperCase(), 256, 64);
+
+        const texture = new THREE.CanvasTexture(canvas);
+
+        texture.colorSpace = THREE.SRGBColorSpace;
+
+        return texture;
+    }
+
+    // Create illustrated doors
+
     function createDoor(side, zPosition, label, page) {
 
-        const xPosition = side === 'left' ? -3.72 : 3.72;
+        const isLeft = side === 'left';
+
+        const xPosition = isLeft ? -3.72 : 3.72;
 
         // Door frame
         addBox(
             0.18, 3.4, 1.9,
             darkMaterial,
-            side === 'left' ? -3.85 : 3.85,
+            isLeft ? -3.85 : 3.85,
             1.8,
             zPosition
         );
 
+        // Individual door material
+        const individualDoorMaterial = doorMaterial.clone();
+
+        individualDoorMaterial.emissive = new THREE.Color('#000000');
+        individualDoorMaterial.emissiveIntensity = 0;
+
         // Door panel
         const door = addBox(
             0.12, 3.1, 1.6,
-            doorMaterial,
+            individualDoorMaterial,
             xPosition,
             1.75,
             zPosition
         );
 
-        // Store information for click interaction
         door.userData = {
             label,
             page,
@@ -207,24 +250,55 @@ export function createCorridor(container) {
 
         interactiveDoors.push(door);
 
-        // Door knob
-        const knobGeometry = new THREE.SphereGeometry(
-            0.09, 12, 12
+        // Door label
+        const labelMaterial = new THREE.MeshBasicMaterial({
+            map: createDoorLabel(label),
+            transparent: true,
+            side: THREE.DoubleSide
+        });
+
+        const labelMesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(1.1, 0.28),
+            labelMaterial
         );
+
+        labelMesh.rotation.y = isLeft
+            ? Math.PI / 2
+            : -Math.PI / 2;
+
+        labelMesh.position.set(
+            isLeft ? -3.645 : 3.645,
+            2.3,
+            zPosition
+        );
+
+        scene.add(labelMesh);
+
+        // Door handle
+        const knobGeometry = new THREE.SphereGeometry(
+            0.09, 16, 16
+        );
+
+        const knobMaterial = new THREE.MeshStandardMaterial({
+            color: '#b58b4b',
+            metalness: 0.5,
+            roughness: 0.4
+        });
 
         const knob = new THREE.Mesh(
             knobGeometry,
-            darkMaterial
+            knobMaterial
         );
 
         knob.position.set(
-            side === 'left' ? -3.58 : 3.58,
+            isLeft ? -3.58 : 3.58,
             1.5,
             zPosition
         );
 
         scene.add(knob);
     }
+
 
     createDoor('left', -1, 'About', 'about.html');
     createDoor('right', -1, 'Skills', 'skills.html');
@@ -293,6 +367,9 @@ export function createCorridor(container) {
     }
 
     // 11. Hover interaction
+  
+    let hoveredDoor = null;
+
     function handlePointerMove(event) {
 
         const door = getDoorFromPointer(event);
@@ -300,7 +377,29 @@ export function createCorridor(container) {
         renderer.domElement.style.cursor = door
             ? 'pointer'
             : 'default';
+
+        // Remove highlight from previous door
+        if (hoveredDoor && hoveredDoor !== door) {
+
+            gsap.to(hoveredDoor.material, {
+                emissiveIntensity: 0,
+                duration: 0.25
+            });
+        }
+
+        // Highlight currently hovered door
+        if (door && door !== hoveredDoor) {
+
+            gsap.to(door.material, {
+                emissive: new THREE.Color('#d5a45b'),
+                emissiveIntensity: 0.45,
+                duration: 0.25
+            });
+        }
+
+        hoveredDoor = door;
     }
+
 
     // 12. GSAP camera transition
     function focusOnDoor(door) {
