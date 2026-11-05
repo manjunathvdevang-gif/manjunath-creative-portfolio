@@ -368,37 +368,47 @@ export function createCorridor(container) {
 
     // 11. Hover interaction
   
-    let hoveredDoor = null;
+    
+let hoveredDoor = null;
 
-    function handlePointerMove(event) {
+function handlePointerMove(event) {
 
-        const door = getDoorFromPointer(event);
+    const door = getDoorFromPointer(event);
 
-        renderer.domElement.style.cursor = door
-            ? 'pointer'
-            : 'default';
+    renderer.domElement.style.cursor = door
+        ? 'pointer'
+        : 'default';
 
-        // Remove highlight from previous door
-        if (hoveredDoor && hoveredDoor !== door) {
+    // Reset previous door
+    if (hoveredDoor && hoveredDoor !== door) {
 
-            gsap.to(hoveredDoor.material, {
-                emissiveIntensity: 0,
-                duration: 0.25
-            });
-        }
+        gsap.killTweensOf(hoveredDoor.material);
 
-        // Highlight currently hovered door
-        if (door && door !== hoveredDoor) {
-
-            gsap.to(door.material, {
-                emissive: new THREE.Color('#d5a45b'),
-                emissiveIntensity: 0.45,
-                duration: 0.25
-            });
-        }
-
-        hoveredDoor = door;
+        gsap.to(hoveredDoor.material, {
+            emissiveIntensity: 0,
+            duration: 0.3,
+            onComplete: () => {
+                hoveredDoor?.material.emissive.set('#000000');
+            }
+        });
     }
+
+    // Highlight selected door
+    if (door && door !== hoveredDoor) {
+
+        gsap.killTweensOf(door.material);
+
+        door.material.emissive.set('#d5a45b');
+
+        gsap.to(door.material, {
+            emissiveIntensity: 0.25,
+            duration: 0.3
+        });
+    }
+
+    hoveredDoor = door;
+}
+
 
 
     // 12. GSAP camera transition
