@@ -1,14 +1,14 @@
 
 import * as THREE from 'three';
+import gsap from 'gsap';
 
 export function createCorridor(container) {
 
-    // 1. Create the scene
+    // 1. Scene
     const scene = new THREE.Scene();
-
     scene.background = new THREE.Color('#e9e3d5');
 
-    // 2. Create the camera
+    // 2. Camera
     const camera = new THREE.PerspectiveCamera(
         60,
         container.clientWidth / container.clientHeight,
@@ -17,12 +17,17 @@ export function createCorridor(container) {
     );
 
     camera.position.set(0, 2.3, 8);
-    camera.lookAt(0, 2, -7);
 
-    // 3. Create the renderer
+    const originalPosition = camera.position.clone();
+    const originalTarget = new THREE.Vector3(0, 2, -7);
+
+    let currentTarget = originalTarget.clone();
+
+    camera.lookAt(currentTarget);
+
+    // 3. Renderer
     const renderer = new THREE.WebGLRenderer({
-        antialias: true,
-        alpha: false
+        antialias: true
     });
 
     renderer.setSize(
@@ -38,33 +43,86 @@ export function createCorridor(container) {
 
     container.appendChild(renderer.domElement);
 
-    // 4. Materials
+   
+    // 4. Generate hand-drawn paper textures
+
+    function createSketchTexture(baseColor, isWood = false) {
+
+        const canvas = document.createElement('canvas');
+
+        canvas.width = 512;
+        canvas.height = 512;
+
+        const ctx = canvas.getContext('2d');
+
+        // Paper background
+        ctx.fillStyle = baseColor;
+        ctx.fillRect(0, 0, 512, 512);
+
+        // Random paper grain
+        for (let i = 0; i < 18000; i++) {
+
+            const x = Math.random() * 512;
+            const y = Math.random() * 512;
+
+            ctx.fillStyle = `rgba(80, 65, 45, ${Math.random() * 0.08})`;
+
+            ctx.fillRect(x, y, 1.5, 1.5);
+        }
+
+        // Pencil strokes
+        for (let i = 0; i < 100; i++) {
+
+            const x = Math.random() * 512;
+            const y = Math.random() * 512;
+
+            ctx.strokeStyle = 'rgba(70, 55, 40, 0.12)';
+            ctx.lineWidth = 0.7;
+
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(
+                x + (isWood ? 35 : 15),
+                y + (isWood ? 2 : 5)
+            );
+
+            ctx.stroke();
+        }
+
+        const texture = new THREE.CanvasTexture(canvas);
+
+        texture.colorSpace = THREE.SRGBColorSpace;
+
+        return texture;
+    }
+
+    // 5. Textured materials
+
     const wallMaterial = new THREE.MeshStandardMaterial({
-        color: '#eee8d9',
+        map: createSketchTexture('#eee8d9'),
         roughness: 1
     });
 
     const floorMaterial = new THREE.MeshStandardMaterial({
-        color: '#c9bfae',
+        map: createSketchTexture('#c9bfae'),
         roughness: 1
     });
 
     const doorMaterial = new THREE.MeshStandardMaterial({
-        color: '#a58b68',
+        map: createSketchTexture('#a58b68', true),
         roughness: 1
     });
 
     const darkMaterial = new THREE.MeshStandardMaterial({
-        color: '#514536'
+        color: '#514536',
+        roughness: 1
     });
 
-    // 5. Lighting
-    const ambientLight = new THREE.AmbientLight(
-        '#ffffff',
-        2
-    );
 
-    scene.add(ambientLight);
+    // 5. Lighting
+    scene.add(
+        new THREE.AmbientLight('#ffffff', 2)
+    );
 
     const directionalLight = new THREE.DirectionalLight(
         '#fff1d6',
@@ -74,7 +132,7 @@ export function createCorridor(container) {
     directionalLight.position.set(2, 8, 5);
     scene.add(directionalLight);
 
-    // Helper to create corridor geometry
+    // 6. Geometry helper
     function addBox(width, height, depth, material, x, y, z) {
 
         const geometry = new THREE.BoxGeometry(
@@ -83,15 +141,11 @@ export function createCorridor(container) {
             depth
         );
 
-        const mesh = new THREE.Mesh(
-            geometry,
-            material
-        );
+        const mesh = new THREE.Mesh(geometry, material);
 
         mesh.position.set(x, y, z);
         scene.add(mesh);
 
-        // Sketch-like outlines
         const edges = new THREE.EdgesGeometry(geometry);
 
         const outline = new THREE.LineSegments(
@@ -109,54 +163,49 @@ export function createCorridor(container) {
         return mesh;
     }
 
-    // 6. Corridor floor
-    addBox(
-        8, 0.2, 25,
-        floorMaterial,
-        0, -0.1, -7
-    );
+    // 7. Corridor structure
+    addBox(8, 0.2, 25, floorMaterial, 0, -0.1, -7);
 
-    // 7. Corridor ceiling
-    addBox(
-        8, 0.2, 25,
-        wallMaterial,
-        0, 5, -7
-    );
+    addBox(8, 0.2, 25, wallMaterial, 0, 5, -7);
 
-    // 8. Left wall
-    addBox(
-        0.2, 5, 25,
-        wallMaterial,
-        -4, 2.5, -7
-    );
+    addBox(0.2, 5, 25, wallMaterial, -4, 2.5, -7);
 
-    // 9. Right wall
-    addBox(
-        0.2, 5, 25,
-        wallMaterial,
-        4, 2.5, -7
-    );
+    addBox(0.2, 5, 25, wallMaterial, 4, 2.5, -7);
 
-    // 10. Create doors
-    function createDoor(side, zPosition, label) {
+    // 8. Interactive doors
+    const interactiveDoors = [];
 
-        const xPosition = side === 'left' ? -3.85 : 3.85;
+    function createDoor(side, zPosition, label, page) {
+
+        const xPosition = side === 'left' ? -3.72 : 3.72;
 
         // Door frame
         addBox(
             0.18, 3.4, 1.9,
             darkMaterial,
-            xPosition, 1.8, zPosition
+            side === 'left' ? -3.85 : 3.85,
+            1.8,
+            zPosition
         );
 
         // Door panel
-        addBox(
+        const door = addBox(
             0.12, 3.1, 1.6,
             doorMaterial,
-            side === 'left' ? -3.72 : 3.72,
+            xPosition,
             1.75,
             zPosition
         );
+
+        // Store information for click interaction
+        door.userData = {
+            label,
+            page,
+            side,
+            zPosition
+        };
+
+        interactiveDoors.push(door);
 
         // Door knob
         const knobGeometry = new THREE.SphereGeometry(
@@ -177,17 +226,16 @@ export function createCorridor(container) {
         scene.add(knob);
     }
 
-    // Six doors
-    createDoor('left', -1, 'ABOUT');
-    createDoor('right', -1, 'SKILLS');
+    createDoor('left', -1, 'About', 'about.html');
+    createDoor('right', -1, 'Skills', 'skills.html');
 
-    createDoor('left', -7, 'PROJECTS');
-    createDoor('right', -7, 'CONTACT');
+    createDoor('left', -7, 'Projects', 'projects.html');
+    createDoor('right', -7, 'Contact', 'contact.html');
 
-    createDoor('left', -13, 'MORE');
-    createDoor('right', -13, 'EXTRA');
+    createDoor('left', -13, 'More', 'index.html');
+    createDoor('right', -13, 'Explore', 'index.html');
 
-    // 11. Floor perspective lines
+    // 9. Floor perspective lines
     const gridMaterial = new THREE.LineBasicMaterial({
         color: '#8d806d',
         transparent: true,
@@ -204,14 +252,159 @@ export function createCorridor(container) {
         const geometry = new THREE.BufferGeometry()
             .setFromPoints(points);
 
-        scene.add(
-            new THREE.Line(geometry, gridMaterial)
-        );
+        scene.add(new THREE.Line(geometry, gridMaterial));
     }
 
-    // 12. Animation loop
-    let animationId;
+    // 10. Raycasting for mouse interaction
+    const raycaster = new THREE.Raycaster();
 
+    const pointer = new THREE.Vector2();
+
+    const status = document.getElementById('scene-status');
+
+    const reducedMotion = window.matchMedia(
+        '(prefers-reduced-motion: reduce)'
+    ).matches;
+
+    let animationId;
+    let transitionActive = false;
+    let returnTween;
+
+    function getDoorFromPointer(event) {
+
+        const rect = renderer.domElement.getBoundingClientRect();
+
+        pointer.x = (
+            (event.clientX - rect.left) / rect.width
+        ) * 2 - 1;
+
+        pointer.y = -(
+            (event.clientY - rect.top) / rect.height
+        ) * 2 + 1;
+
+        raycaster.setFromCamera(pointer, camera);
+
+        const hits = raycaster.intersectObjects(
+            interactiveDoors,
+            false
+        );
+
+        return hits.length ? hits[0].object : null;
+    }
+
+    // 11. Hover interaction
+    function handlePointerMove(event) {
+
+        const door = getDoorFromPointer(event);
+
+        renderer.domElement.style.cursor = door
+            ? 'pointer'
+            : 'default';
+    }
+
+    // 12. GSAP camera transition
+    function focusOnDoor(door) {
+
+        if (!door || transitionActive) return;
+
+        const { label, side, zPosition } = door.userData;
+
+        if (status) {
+            status.textContent =
+                `You selected ${label}. Use the navigation menu to open this section.`;
+        }
+
+        // Respect reduced-motion preferences
+        if (reducedMotion) return;
+
+        transitionActive = true;
+
+        gsap.killTweensOf(camera.position);
+        gsap.killTweensOf(currentTarget);
+        returnTween?.kill();
+
+        const sideDirection = side === 'left' ? -1 : 1;
+
+        const destinationPosition = new THREE.Vector3(
+            sideDirection * 2.4,
+            2.1,
+            zPosition + 2.4
+        );
+
+        const destinationTarget = new THREE.Vector3(
+            sideDirection * 3.7,
+            1.8,
+            zPosition
+        );
+
+        const move = gsap.to(camera.position, {
+            x: destinationPosition.x,
+            y: destinationPosition.y,
+            z: destinationPosition.z,
+            duration: 1.2,
+            ease: 'power3.inOut',
+            onUpdate: () => camera.lookAt(currentTarget)
+        });
+
+        gsap.to(currentTarget, {
+            x: destinationTarget.x,
+            y: destinationTarget.y,
+            z: destinationTarget.z,
+            duration: 1.2,
+            ease: 'power3.inOut',
+            onUpdate: () => camera.lookAt(currentTarget),
+            onComplete: () => {
+
+                returnTween = gsap.to(camera.position, {
+                    x: originalPosition.x,
+                    y: originalPosition.y,
+                    z: originalPosition.z,
+                    duration: 1.2,
+                    delay: 0.7,
+                    ease: 'power3.inOut',
+                    onUpdate: () => camera.lookAt(currentTarget),
+                    onComplete: () => {
+
+                        gsap.to(currentTarget, {
+                            x: originalTarget.x,
+                            y: originalTarget.y,
+                            z: originalTarget.z,
+                            duration: 1,
+                            ease: 'power2.inOut',
+                            onUpdate: () => camera.lookAt(currentTarget),
+                            onComplete: () => {
+                                transitionActive = false;
+                            }
+                        });
+
+                    }
+                });
+
+            }
+        });
+    }
+
+    // 13. Click interaction
+    function handlePointerDown(event) {
+
+        const door = getDoorFromPointer(event);
+
+        if (door) {
+            focusOnDoor(door);
+        }
+    }
+
+    renderer.domElement.addEventListener(
+        'pointermove',
+        handlePointerMove
+    );
+
+    renderer.domElement.addEventListener(
+        'pointerdown',
+        handlePointerDown
+    );
+
+    // 14. Animation loop
     function animate() {
 
         animationId = requestAnimationFrame(animate);
@@ -221,7 +414,7 @@ export function createCorridor(container) {
 
     animate();
 
-    // 13. Responsive resizing
+    // 15. Responsive resizing
     function handleResize() {
 
         const width = container.clientWidth;
@@ -237,12 +430,27 @@ export function createCorridor(container) {
 
     window.addEventListener('resize', handleResize);
 
-    // Cleanup
+    // 16. Cleanup
     return function cleanup() {
 
         cancelAnimationFrame(animationId);
 
+        returnTween?.kill();
+
+        gsap.killTweensOf(camera.position);
+        gsap.killTweensOf(currentTarget);
+
         window.removeEventListener('resize', handleResize);
+
+        renderer.domElement.removeEventListener(
+            'pointermove',
+            handlePointerMove
+        );
+
+        renderer.domElement.removeEventListener(
+            'pointerdown',
+            handlePointerDown
+        );
 
         renderer.dispose();
 
